@@ -1,0 +1,11 @@
+{
+  "name": "testqdec",
+  "version": "0.0.0",
+  "description": "Test for MicroBitQDec class.",
+  "license": "MIT",
+  "dependencies": {
+    "microbit": "lancaster-university/microbit"
+  },
+  "targetDependencies": {},
+  "bin": "./source"
+}
