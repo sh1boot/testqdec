@@ -62,21 +62,24 @@ class TachoMotor : public MicroBitQDec
     int power;
 
     void setState(Mode s) {
+        Mode oldState = state;
         nextState = state = s;
-        if (state == MOTOR_SLEEP && s != MOTOR_SLEEP)
+        if (oldState == MOTOR_SLEEP && state != MOTOR_SLEEP)
             start();
         switch (s) {
         case MOTOR_SLEEP:
-            if (state != MOTOR_SLEEP) {
+            if (oldState != MOTOR_SLEEP) {
                 power = 0;
                 motor.coast();
                 stop();
             }
             break;
         case MOTOR_COAST:
+            power = 0;
             motor.coast();
             break;
         case MOTOR_BRAKE:
+            power = 0;
             motor.brake();
             break;
         case MOTOR_POWER:
@@ -99,27 +102,30 @@ class TachoMotor : public MicroBitQDec
         int64_t p = getPosition();
         int32_t q = getSpeed();
         if (state != nextState) {
-            if ((q > 0 && p >= targetPosition) || (q < 0 && p <= targetPosition))
+            if ((power > 0 && p >= targetPosition) || (power < 0 && p <= targetPosition)) {
+                triggerPosition = p;
                 setState(nextState);
+                power = 0;
+            }
         }
         switch (state) {
         case MOTOR_SPEED:
-            power += speedProfile(targetSpeed - q);
-            if (power > MICROBIT_PIN_MAX_OUTPUT) power = MICROBIT_PIN_MAX_OUTPUT;
-            if (power < -MICROBIT_PIN_MAX_OUTPUT) power = -MICROBIT_PIN_MAX_OUTPUT;
-            motor.power(power);
-        case MOTOR_TRACK:
-            power += positionProfile(targetPosition - p);
+            power = adjustForSpeed(power, targetSpeed - q);
             if (power > MICROBIT_PIN_MAX_OUTPUT) power = MICROBIT_PIN_MAX_OUTPUT;
             if (power < -MICROBIT_PIN_MAX_OUTPUT) power = -MICROBIT_PIN_MAX_OUTPUT;
             motor.power(power);
             break;
+        case MOTOR_TRACK:
+            power = adjustForPosition(power, targetPosition - p);
+            if (power > MICROBIT_PIN_MAX_OUTPUT) power = MICROBIT_PIN_MAX_OUTPUT;
+            if (power < -MICROBIT_PIN_MAX_OUTPUT) power = -MICROBIT_PIN_MAX_OUTPUT;
+            motor.power(power);
             break;
         case MOTOR_POSITION:
-            power += positionProfile(targetPosition - p);
+            power = adjustForPosition(power, targetPosition - p);
             if (power > MICROBIT_PIN_MAX_OUTPUT) power = MICROBIT_PIN_MAX_OUTPUT;
             if (power < -MICROBIT_PIN_MAX_OUTPUT) power = -MICROBIT_PIN_MAX_OUTPUT;
-            motor.powerSlowDecay(power);
+            motor.power(power);
             break;
         default:
             /* no-op */
@@ -128,15 +134,15 @@ class TachoMotor : public MicroBitQDec
     }
 
     protected:
-    virtual int positionProfile(int64_t d) {
-        if (d < 0) return -10;
-        if (d > 0) return 10;
-        return 0;
+    virtual int adjustForPosition(int power, int64_t d) const {
+        if (d < 0) return power > 0 ? -60 : power - 1;
+        if (d > 0) return power < 0 ?  60 : power + 1;
+        return power;
     }
-    virtual int speedProfile(int32_t d) {
-        if (d < 0) return -10;
-        if (d > 0) return 10;
-        return 0;
+    virtual int adjustForSpeed(int power, int32_t d) const {
+        if (d < 0) return power - 1;
+        if (d > 0) return power + 1;
+        return power;
     }
 
     public:
@@ -168,11 +174,22 @@ class TachoMotor : public MicroBitQDec
         setNextState(target, andThen);
     }
 
-    void peek(int64_t& target, int32_t& speed, int& power) {
+    void peek(int64_t& target, int32_t& speed, int& power, char const*& mode) {
         target = targetPosition;
         speed = targetSpeed;
         power = this->power;
+        switch (state) {
+        case MOTOR_SLEEP:     mode = "SLEEP"; break;
+        case MOTOR_COAST:     mode = "COAST"; break;
+        case MOTOR_BRAKE:     mode = "BRAKE"; break;
+        case MOTOR_POWER:     mode = "POWER"; break;
+        case MOTOR_SPEED:     mode = "SPEED"; break;
+        case MOTOR_TRACK:     mode = "TRACK"; break;
+        case MOTOR_POSITION:  mode = "POSITION"; break;
+        default:              mode = "OOPS";
+        }
     }
+    int64_t triggerPosition = 0;
 };
 
 
@@ -201,48 +218,49 @@ int main()
 {
     qdec.start();
     int mode = 0;
-    char const *modestr = "";
     for (;;)
     {
+        int delay = 2000;
         switch (++mode) {
         default:
             mode = 0;
             /*@fallthrough@*/
-        case 0: modestr = "SLEEP",
-            qdec.sleep();
+        case 0: qdec.sleep();
             break;
-        case 1: modestr = "COAST",
-            qdec.coast();
+        case 1: qdec.coast();
             break;
-        case 2: modestr = "BRAKE",
-            qdec.brake();
+        case 2: qdec.brake();
             break;
-        case 3: modestr = "POWER",
-            qdec.go(MICROBIT_PIN_MAX_OUTPUT / 3);
+        case 3: qdec.go(MICROBIT_PIN_MAX_OUTPUT * 2 / 7);
+            delay = 2000;
             break;
-        case 4: modestr = "SPEED",
-            qdec.goAt(-300);
+        case 4: qdec.goTo(0);
+            delay = 5000;
             break;
-        case 5: modestr = "GOTOK",
-            qdec.goTo(0);
+        case 5: qdec.goAt(-720);
+            delay = 20000;
             break;
-        case 6: modestr = "GOTOP",
-            qdec.goTo(720, qdec.MOTOR_POSITION);
+        case 6: qdec.goTo(720, qdec.MOTOR_POSITION);
+            delay = 25000;
             break;
         }
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < delay; i += 50) {
             int64_t target;
             int32_t tspeed;
             int power;
+            char const* mode;
             int64_t position = qdec.getPosition();
             int32_t speed = qdec.getSpeed();
-            qdec.peek(target, tspeed, power);
-            printf("%6s: tp:%8d p:%8d    ts:%6d: s:%8d   pwr:%4d    \r",
-                    modestr,
-                    (int)target, (int)position,
-                    (int)tspeed, (int)speed,
-                    power);
-            fflush(stdout);
+            qdec.peek(target, tspeed, power, mode);
+            printf("\033[1;1H"
+                    "position: %6d       speed: %5d        mode: %s  \033[K\r\n"
+                    "  target: %6d      target: %5d       power: %5d  \033[K\r\n"
+                    "   error: %6d       error: %5d  \033[K\r\n"
+                    " tripped: %6d  \033[K\r\n",
+                    (int)position, (int)speed, mode,
+                    (int)target, (int)tspeed, power,
+                    (int)(position - target), (int)(speed - tspeed),
+                    (int)qdec.triggerPosition);
             wait_ms(49);
         }
     }
