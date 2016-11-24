@@ -3,6 +3,8 @@
 #include "MicroBitPin.h"
 #include "MicroBitQDec.h"
 
+#include <limits.h>
+
 struct MicroBitMotor : public MicroBitComponent
 {
     MicroBitPin& forward;
@@ -25,10 +27,13 @@ struct MicroBitMotor : public MicroBitComponent
         else reverse.setDigitalValue(0);
     }
     void powerSlowDecay(int value) {
-        if (value > 0) forward.setAnalogValue(value);
-        else forward.setDigitalValue(1);
-        if (value < 0) reverse.setAnalogValue(-value);
+        // Switch between drive and brake.  This means that the desired
+        // direction is always high, and the other direction is modulated to
+        // stay _low_ in proportion to the requested power.
+        if (value > 0) reverse.setAnalogValue(MICROBIT_PIN_MAX_OUTPUT - value);
         else reverse.setDigitalValue(1);
+        if (value < 0) forward.setAnalogValue(MICROBIT_PIN_MAX_OUTPUT + value);
+        else forward.setDigitalValue(1);
     }
 };
 
@@ -53,12 +58,45 @@ class TachoMotor : public MicroBitQDec
     TachoMotor(uint16_t id, MicroBitMotor& mtr, MicroBitPin& phaseA, MicroBitPin& phaseB, MicroBitPin& LED)
         : MicroBitQDec(id, phaseA, phaseB, LED), motor(mtr) {}
 
+    protected:
+
+    public:
+
+    struct PIDState {
+        int32_t error;
+        int64_t sigma;
+        int32_t delta;
+
+        void reset(void) {
+            error = 0;
+            sigma = 0;
+            delta = 0;
+        }
+
+        void update(int64_t target, int64_t current) {
+            int32_t oldError = error;
+            error = target - current;
+            sigma += error;
+            delta = error - oldError;
+        }
+        int32_t output(int32_t p, int32_t i, int32_t d) {
+            int64_t sum = (int64_t)p * error;
+            sum += (int64_t)i * sigma;
+            sum += (int64_t)d * delta;
+            sum >>= 16;
+            if (sum < INT_MIN) return INT_MIN;
+            if (sum > INT_MAX) return INT_MAX;
+            return (int32_t)sum;
+        }
+    };
+
     private:
 
     Mode state = MOTOR_SLEEP;
     Mode nextState = MOTOR_SLEEP;
     int64_t targetPosition;
     int32_t targetSpeed;
+    PIDState pid;
     int power;
 
     void setState(Mode s) {
@@ -88,6 +126,7 @@ class TachoMotor : public MicroBitQDec
         case MOTOR_SPEED:
         case MOTOR_TRACK:
         case MOTOR_POSITION:
+            pid.reset();
             break;
         }
         state = s;
@@ -105,27 +144,29 @@ class TachoMotor : public MicroBitQDec
             if ((power > 0 && p >= targetPosition) || (power < 0 && p <= targetPosition)) {
                 triggerPosition = p;
                 setState(nextState);
-                power = 0;
             }
         }
         switch (state) {
         case MOTOR_SPEED:
-            power = adjustForSpeed(power, targetSpeed - q);
+            pid.update(targetSpeed, q);
+            power = followSpeed(pid, power);
             if (power > MICROBIT_PIN_MAX_OUTPUT) power = MICROBIT_PIN_MAX_OUTPUT;
             if (power < -MICROBIT_PIN_MAX_OUTPUT) power = -MICROBIT_PIN_MAX_OUTPUT;
             motor.power(power);
             break;
         case MOTOR_TRACK:
-            power = adjustForPosition(power, targetPosition - p);
+            pid.update(targetPosition, p);
+            power = followPosition(pid, power);
             if (power > MICROBIT_PIN_MAX_OUTPUT) power = MICROBIT_PIN_MAX_OUTPUT;
             if (power < -MICROBIT_PIN_MAX_OUTPUT) power = -MICROBIT_PIN_MAX_OUTPUT;
             motor.power(power);
             break;
         case MOTOR_POSITION:
-            power = adjustForPosition(power, targetPosition - p);
+            pid.update(targetPosition, p);
+            power = followPosition(pid, power);
             if (power > MICROBIT_PIN_MAX_OUTPUT) power = MICROBIT_PIN_MAX_OUTPUT;
             if (power < -MICROBIT_PIN_MAX_OUTPUT) power = -MICROBIT_PIN_MAX_OUTPUT;
-            motor.power(power);
+            motor.powerSlowDecay(power);
             break;
         default:
             /* no-op */
@@ -134,18 +175,22 @@ class TachoMotor : public MicroBitQDec
     }
 
     protected:
-    virtual int adjustForPosition(int power, int64_t d) const {
-        if (d < 0) return power > 0 ? -60 : power - 1;
-        if (d > 0) return power < 0 ?  60 : power + 1;
+    virtual int followSpeed(PIDState& pid, int power) {
+        power = pid.output(speedP, speedI, speedD);
         return power;
     }
-    virtual int adjustForSpeed(int power, int32_t d) const {
-        if (d < 0) return power - 1;
-        if (d > 0) return power + 1;
+    virtual int followPosition(PIDState& pid, int power) const {
+        power = pid.output(positionP, positionI, positionD);
         return power;
     }
 
     public:
+    int32_t speedP = 16384;
+    int32_t speedI = 1000;
+    int32_t speedD = 10;
+    int32_t positionP = 1 << 20;
+    int32_t positionI = 10000;
+    int32_t positionD = 100;
 
     void sleep(void) {
         setState(MOTOR_SLEEP);
@@ -188,6 +233,11 @@ class TachoMotor : public MicroBitQDec
         case MOTOR_POSITION:  mode = "POSITION"; break;
         default:              mode = "OOPS";
         }
+    }
+    void pidpeek(int32_t& e, int32_t& s, int32_t& d) {
+        e = pid.error;
+        s = pid.sigma;
+        d = pid.delta;
     }
     int64_t triggerPosition = 0;
 };
@@ -251,15 +301,17 @@ int main()
             char const* mode;
             int64_t position = qdec.getPosition();
             int32_t speed = qdec.getSpeed();
+            int32_t error, sigma, delta;
             qdec.peek(target, tspeed, power, mode);
+            qdec.pidpeek(error, sigma, delta);
             printf("\033[1;1H"
-                    "position: %6d       speed: %5d        mode: %s  \033[K\r\n"
-                    "  target: %6d      target: %5d       power: %5d  \033[K\r\n"
-                    "   error: %6d       error: %5d  \033[K\r\n"
+                    "position: %6d       speed: %5d      error: %6d        mode: %s  \033[K\r\n"
+                    "  target: %6d      target: %5d      sigma: %6d       power: %5d  \033[K\r\n"
+                    "   error: %6d       error: %5d      delta: %6d  \033[K\r\n"
                     " tripped: %6d  \033[K\r\n",
-                    (int)position, (int)speed, mode,
-                    (int)target, (int)tspeed, power,
-                    (int)(position - target), (int)(speed - tspeed),
+                    (int)position, (int)speed, (int)error, mode,
+                    (int)target, (int)tspeed, (int)sigma, power,
+                    (int)(position - target), (int)(speed - tspeed), (int)delta,
                     (int)qdec.triggerPosition);
             wait_ms(49);
         }
