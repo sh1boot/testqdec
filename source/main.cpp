@@ -8,6 +8,7 @@
 
 struct MicroBitMotor : public MicroBitComponent
 {
+    static const int PWMPeriod = 100;
     MicroBitPin& forward;
     MicroBitPin& reverse;
 
@@ -21,7 +22,10 @@ struct MicroBitMotor : public MicroBitComponent
         forward.setDigitalValue(0);
         reverse.setDigitalValue(0);
     }
-    void power(int value) {
+    void powerFastDecay(int value) {
+        value = (value * MICROBIT_PIN_MAX_OUTPUT + 50) / 100;
+        forward.setAnalogPeriodUs(PWMPeriod);
+        reverse.setAnalogPeriodUs(PWMPeriod);
         if (value >= MICROBIT_PIN_MAX_OUTPUT) forward.setDigitalValue(1);
         else if (value > 0) forward.setAnalogValue(value);
         else forward.setDigitalValue(0);
@@ -30,6 +34,9 @@ struct MicroBitMotor : public MicroBitComponent
         else reverse.setDigitalValue(0);
     }
     void powerSlowDecay(int value) {
+        value = (value * MICROBIT_PIN_MAX_OUTPUT + 50) / 100;
+        forward.setAnalogPeriodUs(PWMPeriod);
+        reverse.setAnalogPeriodUs(PWMPeriod);
         // Switch between drive and brake.  This means that the desired
         // direction is always high, and the other direction is modulated to
         // stay _low_ in proportion to the requested power.
@@ -40,11 +47,16 @@ struct MicroBitMotor : public MicroBitComponent
         else if (value < 0) forward.setAnalogValue(MICROBIT_PIN_MAX_OUTPUT + value);
         else forward.setDigitalValue(1);
     }
+    protected:
 };
 
 class TachoMotor : public MicroBitQDec
 {
+    static const int pollPeriod = 2000;
+    static const int hysteresis = 3;
+
     MicroBitMotor& motor;
+    Ticker ticker;
 
     public:
 
@@ -65,6 +77,18 @@ class TachoMotor : public MicroBitQDec
 
     protected:
 
+    int start(void) {
+        ticker.attach_us(this, &TachoMotor::pidTick, pollPeriod);
+        int result = MicroBitQDec::start();
+        if (result != MICROBIT_OK) ticker.detach();
+        return result;
+    }
+
+    void stop(void) {
+        MicroBitQDec::stop();
+        ticker.detach();
+    }
+
     public:
 
     struct PIDState {
@@ -81,10 +105,11 @@ class TachoMotor : public MicroBitQDec
         void update(int64_t target, int64_t current) {
             int32_t oldError = error;
             error = target - current;
+            if (-hysteresis < error && error < hysteresis) error = 0;
             sigma += error;
             delta = error - oldError;
         }
-        int32_t output(int32_t p, int32_t i, int32_t d) {
+        int32_t output(int32_t p, int32_t i, int32_t d) const {
             int64_t sum = (int64_t)p * error;
             sum += (int64_t)i * sigma;
             sum += (int64_t)d * delta;
@@ -126,7 +151,7 @@ class TachoMotor : public MicroBitQDec
             motor.brake();
             break;
         case MOTOR_POWER:
-            motor.power(power);
+            motor.powerSlowDecay(power);
             break;
         case MOTOR_SPEED:
         case MOTOR_TRACK:
@@ -145,7 +170,8 @@ class TachoMotor : public MicroBitQDec
         nextState = s;
     }
 
-    virtual void systemTick(void) {
+    virtual void pidTick(void) {
+        poll();
         int64_t p = getPosition();
         int32_t q = getSpeed();
         if (state != nextState) {
@@ -158,22 +184,16 @@ class TachoMotor : public MicroBitQDec
         case MOTOR_SPEED:
             pid.update(targetSpeed, q);
             power = followSpeed(pid, power);
-            if (power > MICROBIT_PIN_MAX_OUTPUT) power = MICROBIT_PIN_MAX_OUTPUT;
-            if (power < -MICROBIT_PIN_MAX_OUTPUT) power = -MICROBIT_PIN_MAX_OUTPUT;
-            motor.power(power);
+            motor.powerSlowDecay(power);
             break;
         case MOTOR_TRACK:
             pid.update(targetPosition, p);
             power = followPosition(pid, power);
-            if (power > MICROBIT_PIN_MAX_OUTPUT) power = MICROBIT_PIN_MAX_OUTPUT;
-            if (power < -MICROBIT_PIN_MAX_OUTPUT) power = -MICROBIT_PIN_MAX_OUTPUT;
-            motor.power(power);
+            motor.powerSlowDecay(power);
             break;
         case MOTOR_POSITION:
             pid.update(targetPosition, p);
             power = followPosition(pid, power);
-            if (power > MICROBIT_PIN_MAX_OUTPUT) power = MICROBIT_PIN_MAX_OUTPUT;
-            if (power < -MICROBIT_PIN_MAX_OUTPUT) power = -MICROBIT_PIN_MAX_OUTPUT;
             motor.powerSlowDecay(power);
             break;
         default:
@@ -193,12 +213,12 @@ class TachoMotor : public MicroBitQDec
     }
 
     public:
-    int32_t speedP = 16384;
-    int32_t speedI = 1000;
-    int32_t speedD = 10;
-    int32_t positionP = 1 << 20;
-    int32_t positionI = 10000;
-    int32_t positionD = 1000;
+    int32_t speedP = 1576;
+    int32_t speedI = 100;
+    int32_t speedD = 1;
+    int32_t positionP = 6 * 65536;
+    int32_t positionI = 0;
+    int32_t positionD = 0;
 
     void sleep(void) {
         setState(MOTOR_SLEEP);
@@ -275,14 +295,14 @@ TachoMotor qdec(MICROBIT_ID_IO_P0, motor, P0, P1);
 int main()
 {
     char const* command = "";
+
     for (;;)
     {
         int key;
-        int pstep = abs(qdec.positionP / 32) + 1;
-        int istep = abs(qdec.positionI / 32) + 1;
-        int dstep = abs(qdec.positionD / 32) + 1;
-        do {
-            key = serial.read(ASYNC);
+        int pstep = abs(qdec.positionP) / 32 + 1;
+        int istep = abs(qdec.positionI) / 32 + 1;
+        int dstep = abs(qdec.positionD) / 32 + 1;
+        while ((key = serial.read(ASYNC)) != MICROBIT_NO_DATA) {
             switch (key) {
             case '0': command = "sleep";
                 qdec.sleep();
@@ -324,7 +344,7 @@ int main()
                 qdec.positionD += dstep;
                 break;
             }
-        } while (key != MICROBIT_NO_DATA);
+        }
 
         int64_t target;
         int32_t tspeed;
