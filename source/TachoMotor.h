@@ -1,6 +1,6 @@
 #include "mbed.h"
 #include "MicroBitPin.h"
-#include "MicroBitQDec.h"
+#include "MicroBitQuadratureDecoder.h"
 #include "GenericMotor.h"
 
 #include <limits.h>
@@ -31,7 +31,7 @@ class TachoMotor : public MicroBitComponent
     static const int hysteresis = 3;
 
     GenericMotor& motor;
-    MicroBitQDec& qdec;
+    MicroBitQuadratureDecoder& qdec;
     QDecSpeed speed;
     Ticker ticker;
 
@@ -47,7 +47,7 @@ class TachoMotor : public MicroBitComponent
         MOTOR_POSITION                  // active feedback to maintain position
     };
 
-    TachoMotor(uint16_t id, GenericMotor& mtr, MicroBitQDec& qd)
+    TachoMotor(uint16_t id, GenericMotor& mtr, MicroBitQuadratureDecoder& qd)
         : motor(mtr), qdec(qd) { this->id = id; }
 
     protected:

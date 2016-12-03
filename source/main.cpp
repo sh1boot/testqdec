@@ -14,10 +14,10 @@ MicroBitPin P15(MICROBIT_ID_IO_P15, MICROBIT_PIN_P15, PIN_CAPABILITY_AD);
 MicroBitPin P16(MICROBIT_ID_IO_P16, MICROBIT_PIN_P16, PIN_CAPABILITY_AD);
 
 #if 0 // Kitronik motor driver board
-MicroBitQDec qd(P1, P11);
+MicroBitQuadratureDecoder qd(P1, P11);
 MicroBitMotor motor(P12, P16);
 #else
-MicroBitQDec qd(P0, P1);
+MicroBitQuadratureDecoder qd(P0, P1);
 GenericMotor motor(P15, P16);
 #endif
 TachoMotor tmot(12345, motor, qd);
