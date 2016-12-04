@@ -2,9 +2,12 @@
 #include "MicroBitSerial.h"
 #include "MicroBitPin.h"
 #include "TachoMotor.h"
+#include "SoftQDec.h"
 #include "ErrorNo.h"
 
 MicroBitSerial serial(USBTX, USBRX);
+
+MicroBitMessageBus bus;
 
 MicroBitPin P0(MICROBIT_ID_IO_P0, MICROBIT_PIN_P0, PIN_CAPABILITY_ALL);
 MicroBitPin P1(MICROBIT_ID_IO_P1, MICROBIT_PIN_P1, PIN_CAPABILITY_ALL);
@@ -17,7 +20,8 @@ MicroBitPin P16(MICROBIT_ID_IO_P16, MICROBIT_PIN_P16, PIN_CAPABILITY_AD);
 MicroBitQuadratureDecoder qd(P1, P11);
 MicroBitMotor motor(P12, P16);
 #else
-MicroBitQuadratureDecoder qd(P0, P1);
+//MicroBitQuadratureDecoder qd(P0, P1);
+SoftQuadratureDecoder qd(MICROBIT_ID_IO_P0, bus, P0, P1);
 GenericMotor motor(P15, P16);
 #endif
 TachoMotor tmot(12345, motor, qd);
