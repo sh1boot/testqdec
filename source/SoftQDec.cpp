@@ -56,8 +56,8 @@ int SoftQuadratureDecoder::setSamplePeriodUs(uint32_t period)
 int SoftQuadratureDecoder::start()
 {
     livestamp = latchstamp = system_timer_current_time_us();
-    eventBus.listen(listenId, MICROBIT_PIN_EVT_RISE, this, &SoftQuadratureDecoder::onRiseEvent, MESSAGE_BUS_LISTENER_IMMEDIATE);
-    eventBus.listen(listenId, MICROBIT_PIN_EVT_FALL, this, &SoftQuadratureDecoder::onFallEvent, MESSAGE_BUS_LISTENER_IMMEDIATE);
+    eventBus.listen(listenId, MICROBIT_PIN_EVT_RISE, this, &SoftQuadratureDecoder::onEdgeEvent, MESSAGE_BUS_LISTENER_IMMEDIATE);
+    eventBus.listen(listenId, MICROBIT_PIN_EVT_FALL, this, &SoftQuadratureDecoder::onEdgeEvent, MESSAGE_BUS_LISTENER_IMMEDIATE);
     phaseA.eventOn(MICROBIT_PIN_EVENT_ON_EDGE);
     return MICROBIT_OK;
 }
@@ -68,11 +68,9 @@ int SoftQuadratureDecoder::start()
 void SoftQuadratureDecoder::stop()
 {
     phaseA.eventOn(MICROBIT_PIN_EVENT_NONE);
-    eventBus.ignore(listenId, MICROBIT_PIN_EVT_RISE, this, &SoftQuadratureDecoder::onRiseEvent);
-    eventBus.ignore(listenId, MICROBIT_PIN_EVT_FALL, this, &SoftQuadratureDecoder::onFallEvent);
+    eventBus.ignore(listenId, MICROBIT_PIN_EVT_RISE, this, &SoftQuadratureDecoder::onEdgeEvent);
+    eventBus.ignore(listenId, MICROBIT_PIN_EVT_FALL, this, &SoftQuadratureDecoder::onEdgeEvent);
 }
-
-int events = 0;
 
 /** Poll hardware for latest decoder movement and reset the hardware counter to zero.
   *
@@ -85,9 +83,7 @@ int events = 0;
 void SoftQuadratureDecoder::poll()
 {
     int32_t current = countstate ^ phaseB.getDigitalValue();
-//    position += current - (int32_t)position;
-    position = current;
-//    position = events;
+    position += current - (int32_t)position;
 }
 
 /**
@@ -103,44 +99,22 @@ void SoftQuadratureDecoder::resetPosition(int64_t position)
     this->position = position;
 }
 
-static inline int32_t updateCountState(int32_t state, int A, int B) {
+void SoftQuadratureDecoder::onEdgeEvent(MicroBitEvent e)
+{
+    int A = (e.value == MICROBIT_PIN_EVT_RISE);
+    int B = phaseB.getDigitalValue();
+    int32_t state = countstate;
+
+    A = !A; // Reverse polarity -- would normally swap pins to achieve this, but there's only one safe clock pin here
+
     if (B == 0)
+    {
         state += 1 - 2 * A;
-    return (state & ~3) | A * 3;
-}
-
-void SoftQuadratureDecoder::onRiseEvent(MicroBitEvent e)
-{
-    int A = 1;
-    int B = phaseB.getDigitalValue();
-    countstate = updateCountState(countstate, A, B);
-    if (B == 0)
-    {
         livestamp = e.timestamp;
         speed = livestamp - latchstamp;
-        events++;
     }
     else
-    {
         latchstamp = livestamp;
-        events -= 100;
-    }
-}
 
-void SoftQuadratureDecoder::onFallEvent(MicroBitEvent e)
-{
-    int A = 0;
-    int B = phaseB.getDigitalValue();
-    countstate = updateCountState(countstate, A, B);
-    if (B == 0)
-    {
-        livestamp = e.timestamp;
-        speed = livestamp - latchstamp;
-        events += 10000;
-    }
-    else
-    {
-        latchstamp = livestamp;
-        events -= 1000000;
-    }
+    countstate = (state & ~3) | A * 3;
 }

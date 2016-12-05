@@ -40,8 +40,7 @@ class SoftQuadratureDecoder : public MicroBitQuadratureDecoder
     uint32_t speed;
     uint16_t listenId;
 
-    void onRiseEvent(MicroBitEvent e);
-    void onFallEvent(MicroBitEvent e);
+    void onEdgeEvent(MicroBitEvent e); // when phaseA changes, check B and update counter accordingly
 
     public:
     /**
