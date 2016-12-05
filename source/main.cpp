@@ -26,10 +26,16 @@ GenericMotor motor(P15, P16);
 #endif
 TachoMotor tmot(12345, motor, qd);
 
-
 int main()
 {
     char const* command = "";
+
+    // Lego motors have series resistors on their quadrature output, which
+    // appear to be used for part identification via ADC.
+    // Make sure we're not fighting with that output.
+    P0.getDigitalValue(PullNone);
+    P1.getDigitalValue(PullNone);
+    P11.getDigitalValue(PullNone);
 
     for (;;)
     {
@@ -105,7 +111,7 @@ int main()
                 "   error: %6d       error: %5d      delta: %6d  \033[K\r\n"
                 " tripped: %6d  \033[K\r\n"
                 "\033[K\r\n"
-                "    posP: %8d    posI: %8d    posD: %8d  \033[K\r\n\033[K",
+                "    posP: %8d    posI: %8d    posD: %8d  \033[K\r\n\033[K\r\n",
                 command,
                 (int)position, (int)speed, (int)error, mode,
                 (int)target, (int)tspeed, (int)sigma, power,
