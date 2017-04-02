@@ -1,36 +1,43 @@
 Some test code for changes to the [micro:bit][] driver code, plus a software
 quadrature decoder and PID control loop.
 
-Because I have some Lego and I have a micro:bit, and because Lego's [EV3
-intelligent brick][] is kind of pricey, I thought it might be a good idea to
-reduce the cost of controlling Lego robots by writing some basic driver support
-for Lego's [Mindstorms][] motors on micro:bit.  This would allow kits to be
-stretched to more projects at once, rather than just one project per
-[expensive] controller.
+The [EV3 intelligent brick][] used to control Lego [Mindstorms][] motors is
+kind of pricey, and it sets an upper limit on the number of robotics project
+that can be built from a finite set of lego, since every project needs some
+kind of controller.
 
-This is kind of the same idea (but far less developed) as [ev3dev][], but
-running on much cheaper hardware and a [different OS][mbed OS].  A few bits of
-interface hardware can be soldered together for cheap and motors can be bought
-individually as needed.  Like so:
+I happened to have a [micro:bit][] on my desk when I was thinking about this
+and I decided it might be a helpful to offer driver support for motors like
+the Mindstorms ones on much cheaper hardware.  This is kind of the same idea
+(though far less developed) as [ev3dev][], but with a [different OS][mbed OS].
+
+Mindstorms motors are straightforward DC motors with a quadrature encoder
+attached to the output so that speed and position can be monitored and motor
+control adjusted accordingly.
+
+All you need is a micro:bit and a few bits of interface hardware wired
+together, like so:
 
 ![interface logic][]
-(parts: [board][], [edge connector][], [driver][], [connector][], breadboard was a freebie with the wire)
 
-Mindstorms motors are simple DC motors with a quadrature encoder attached to
-the output so that speed and position can be monitored and the motor controlled
-accordingly.  The [nRF51822][] on micro:bit has just a single hardware
-quadrature decoder (previously with no software driver support).
+Parts: [board][], [edge connector][], [driver][], [connector][]
+(cheap in principle but that's all prototyping kits)
 
-Here we have test code for the generic QDEC driver I wrote, plus a software
-quadrature decoder (to control two motors concurrently) and a bit of half-baked
-motor control logic.  Although this README is likely to be out of date if I've
-kept on hacking since I wrote it.
+The [nRF51822][] on micro:bit has a single hardware quadrature decoder, and
+establishing a [driver][microbit-dal] for that is the very first step.
+
+Here we have test code for that driver along with some provisional next steps:
+a software quadrature decoder (to monitor two motors concurrently) and some
+motor control logic.  I'd intended to contribute to microbit-dal and build upon
+those drivers within MicroPython once they were done, but that may no longer be
+the right way forward.
 
 [micro:bit]: http://microbit.org/
 [ev3dev]: http://www.ev3dev.org/
 [EV3 intelligent brick]: https://shop.lego.com/en-US/EV3-Intelligent-Brick-45500
 [Mindstorms]: https://www.lego.com/en-us/mindstorms
 [mbed OS]: https://www.mbed.com/en/development/mbed-os/
+[microbit-dal]: https://github.com/sh1boot/microbit-dal/
 [nRF51822]: https://infocenter.nordicsemi.com/topic/com.nordic.infocenter.nrf51/dita/nrf51/pdflinks/ref_manual.html
 [interface logic]: doc/interface_board.jpg
 [board]: https://www.kitronik.co.uk/5613-bbc-microbit-board-only.html
