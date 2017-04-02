@@ -11,20 +11,27 @@ MicroBitMessageBus bus;
 
 MicroBitPin P0(MICROBIT_ID_IO_P0, MICROBIT_PIN_P0, PIN_CAPABILITY_ALL);
 MicroBitPin P1(MICROBIT_ID_IO_P1, MICROBIT_PIN_P1, PIN_CAPABILITY_ALL);
-MicroBitPin P11(MICROBIT_ID_IO_P11, MICROBIT_PIN_P11, PIN_CAPABILITY_DIGITAL);
-MicroBitPin P12(MICROBIT_ID_IO_P12, MICROBIT_PIN_P12, PIN_CAPABILITY_AD);
-MicroBitPin P15(MICROBIT_ID_IO_P15, MICROBIT_PIN_P15, PIN_CAPABILITY_AD);
-MicroBitPin P16(MICROBIT_ID_IO_P16, MICROBIT_PIN_P16, PIN_CAPABILITY_AD);
+MicroBitPin P2(MICROBIT_ID_IO_P2, MICROBIT_PIN_P2, PIN_CAPABILITY_ALL);
+MicroBitPin P8(MICROBIT_ID_IO_P8, MICROBIT_PIN_P8, PIN_CAPABILITY_STANDARD);
+MicroBitPin P11(MICROBIT_ID_IO_P11, MICROBIT_PIN_P11, PIN_CAPABILITY_STANDARD);
+MicroBitPin P12(MICROBIT_ID_IO_P12, MICROBIT_PIN_P12, PIN_CAPABILITY_STANDARD);
+MicroBitPin P13(MICROBIT_ID_IO_P13, MICROBIT_PIN_P13, PIN_CAPABILITY_STANDARD);
+MicroBitPin P14(MICROBIT_ID_IO_P14, MICROBIT_PIN_P14, PIN_CAPABILITY_STANDARD);
+MicroBitPin P15(MICROBIT_ID_IO_P15, MICROBIT_PIN_P15, PIN_CAPABILITY_STANDARD);
+MicroBitPin P16(MICROBIT_ID_IO_P16, MICROBIT_PIN_P16, PIN_CAPABILITY_STANDARD);
 
 #if 0 // Kitronik motor driver board
 MicroBitQuadratureDecoder qd(P1, P11);
 MicroBitMotor motor(P12, P16);
 #else
-//MicroBitQuadratureDecoder qd(P0, P1);
-SoftQuadratureDecoder qd(MICROBIT_ID_IO_P0, bus, P0, P1);
+MicroBitQuadratureDecoder qd(P0, P1);
 GenericMotor motor(P15, P16);
+
+SoftQuadratureDecoder qdb(MICROBIT_ID_IO_P2, bus, P2, P8);
+GenericMotor motorb(P13, P14);
 #endif
 TachoMotor tmot(12345, motor, qd);
+TachoMotor tmotb(12345, motorb, qdb);
 
 int main()
 {
@@ -35,6 +42,8 @@ int main()
     // Make sure we're not fighting with that output.
     P0.getDigitalValue(PullNone);
     P1.getDigitalValue(PullNone);
+    P2.getDigitalValue(PullNone);
+    P8.getDigitalValue(PullNone);
     P11.getDigitalValue(PullNone);
 
     for (;;)
